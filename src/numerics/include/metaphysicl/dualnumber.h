@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------------bl-
 //--------------------------------------------------------------------------
-// 
+//
 // MetaPhysicL - A metaprogramming library for physics calculations
 //
 // Copyright (C) 2013 The PECOS Development Team
@@ -65,6 +65,10 @@ public:
 
   bool boolean_test() const { return _val; }
 
+  bool & compute_derivative() { return _compute_derivative; }
+
+  const bool & compute_derivative() const { return _compute_derivative; }
+
   DualNumber<T,D> operator- () const { return DualNumber<T,D>(-_val, -_deriv); }
 
   DualNumber<T,D> operator! () const { return DualNumber<T,D>(!_val, !_deriv); }
@@ -96,6 +100,7 @@ public:
 private:
   T _val;
   D _deriv;
+  bool _compute_derivative;
 };
 
 
@@ -162,14 +167,15 @@ struct DualNumberConstructor<DualNumber<T,D>, DD>
 template <typename T, typename D>
 inline
 DualNumber<T,D>::DualNumber() :
-  _val(), _deriv() {}
+  _val(), _deriv(), _compute_derivative(true) {}
 
 template <typename T, typename D>
 template <typename T2>
 inline
 DualNumber<T,D>::DualNumber(const T2& val) :
   _val  (DualNumberConstructor<T,D>::value(val)),
-  _deriv(DualNumberConstructor<T,D>::deriv(val)) {}
+  _deriv(DualNumberConstructor<T,D>::deriv(val)),
+  _compute_derivative(true) {}
 
 template <typename T, typename D>
 template <typename T2, typename D2>
@@ -177,7 +183,8 @@ inline
 DualNumber<T,D>::DualNumber(const T2& val,
                             const D2& deriv) :
   _val  (DualNumberConstructor<T,D>::value(val,deriv)),
-  _deriv(DualNumberConstructor<T,D>::deriv(val,deriv)) {}
+  _deriv(DualNumberConstructor<T,D>::deriv(val,deriv)),
+  _compute_derivative(true) {}
 
 
 // FIXME: these operators currently do automatic type promotion when
@@ -188,6 +195,8 @@ DualNumber<T,D>::DualNumber(const T2& val,
 // subtle run-time user errors would turn into compile-time user
 // errors.
 
+// if (this->compute_derivative() && in.compute_derivative()) {
+
 #define DualNumber_op(opname, functorname, simplecalc, dualcalc) \
 template <typename T, typename D> \
 template <typename T2> \
@@ -195,7 +204,7 @@ inline \
 DualNumber<T,D>& \
 DualNumber<T,D>::operator opname##= (const T2& in) \
 { \
-  simplecalc; \
+  if (this->compute_derivative()) {simplecalc;} \
   this->value() opname##= in; \
   return *this; \
 } \
@@ -206,7 +215,7 @@ inline \
 DualNumber<T,D>& \
 DualNumber<T,D>::operator opname##= (const DualNumber<T2,D2>& in) \
 { \
-  dualcalc; \
+  if (this->compute_derivative() && in.compute_derivative()) {dualcalc;} \
   this->value() opname##= in.value(); \
   return *this; \
 } \
@@ -248,8 +257,6 @@ operator opname (const DualNumber<T,D>& a, const T2& b) \
   return returnval; \
 }
 
-
-
 DualNumber_op(+, Plus, , this->derivatives() += in.derivatives())
 
 DualNumber_op(-, Minus, , this->derivatives() -= in.derivatives())
@@ -262,8 +269,6 @@ DualNumber_op(/, Divides, this->derivatives() /= in,
   this->derivatives() /= in.value();
   this->derivatives() -= this->value()/(in.value()*in.value()) * in.derivatives();
 )
-
-
 
 #define DualNumber_compare(opname) \
 template <typename T, typename D, typename T2, typename D2> \
@@ -307,7 +312,7 @@ DualNumber_compare(||)
 
 template <typename T, typename D>
 inline
-std::ostream&      
+std::ostream&
 operator<< (std::ostream& output, const DualNumber<T,D>& a)
 {
   return output << '(' << a.value() << ',' << a.derivatives() << ')';
@@ -610,7 +615,7 @@ funcname (const DualNumber<T,D>& a, const T2& b) \
   return std::funcname(a, newb); \
 }
 
-DualNumber_std_binary(pow, 
+DualNumber_std_binary(pow,
   funcval * (b.value() * a.derivatives() / a.value() + b.derivatives() * std::log(a.value())))
 DualNumber_std_binary(atan2,
   (b.value() * a.derivatives() - a.value() * b.derivatives()) /
@@ -622,7 +627,7 @@ DualNumber_std_binary(min,
 DualNumber_std_binary(fmod, a.derivatives())
 
 template <typename T, typename D>
-class numeric_limits<DualNumber<T, D> > : 
+class numeric_limits<DualNumber<T, D> > :
   public MetaPhysicL::raw_numeric_limits<DualNumber<T, D>, T> {};
 
 } // namespace std
