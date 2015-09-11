@@ -108,6 +108,8 @@ public:
       _data->resize(s);
       _indices->resize(s); }
 
+  ~DynamicSparseNumberArray() { delete _data; delete _indices; }
+
   DynamicSparseNumberArray() : _data(NULL), _indices(NULL) {}
 
   DynamicSparseNumberArray(const T& val) : _data(NULL), _indices(NULL)  {
