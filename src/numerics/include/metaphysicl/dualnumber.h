@@ -65,9 +65,9 @@ public:
 
   bool boolean_test() const { return _val; }
 
-  bool & compute_derivative() { return _compute_derivative; }
+  bool & compute_derivatives() { return _compute_derivatives; }
 
-  const bool & compute_derivative() const { return _compute_derivative; }
+  const bool & compute_derivatives() const { return _compute_derivatives; }
 
   DualNumber<T,D> operator- () const { return DualNumber<T,D>(-_val, -_deriv); }
 
@@ -100,7 +100,7 @@ public:
 private:
   T _val;
   D _deriv;
-  bool _compute_derivative;
+  bool _compute_derivatives;
 };
 
 
@@ -167,7 +167,7 @@ struct DualNumberConstructor<DualNumber<T,D>, DD>
 template <typename T, typename D>
 inline
 DualNumber<T,D>::DualNumber() :
-  _val(), _deriv(), _compute_derivative(true) {}
+  _val(), _deriv(), _compute_derivatives(true) {}
 
 template <typename T, typename D>
 template <typename T2>
@@ -175,7 +175,7 @@ inline
 DualNumber<T,D>::DualNumber(const T2& val) :
   _val  (DualNumberConstructor<T,D>::value(val)),
   _deriv(DualNumberConstructor<T,D>::deriv(val)),
-  _compute_derivative(true) {}
+  _compute_derivatives(true) {}
 
 template <typename T, typename D>
 template <typename T2, typename D2>
@@ -184,7 +184,7 @@ DualNumber<T,D>::DualNumber(const T2& val,
                             const D2& deriv) :
   _val  (DualNumberConstructor<T,D>::value(val,deriv)),
   _deriv(DualNumberConstructor<T,D>::deriv(val,deriv)),
-  _compute_derivative(true) {}
+  _compute_derivatives(true) {}
 
 
 // FIXME: these operators currently do automatic type promotion when
@@ -204,7 +204,7 @@ inline \
 DualNumber<T,D>& \
 DualNumber<T,D>::operator opname##= (const T2& in) \
 { \
-  if (this->compute_derivative()) {simplecalc;} \
+  if (this->compute_derivatives()) {simplecalc;}        \
   this->value() opname##= in; \
   return *this; \
 } \
@@ -215,7 +215,7 @@ inline \
 DualNumber<T,D>& \
 DualNumber<T,D>::operator opname##= (const DualNumber<T2,D2>& in) \
 { \
-  if (this->compute_derivative() && in.compute_derivative()) {dualcalc;} \
+  if (this->compute_derivatives() && in.compute_derivatives()) {dualcalc;} \
   this->value() opname##= in.value(); \
   return *this; \
 } \
@@ -229,6 +229,7 @@ operator opname (const DualNumber<T,D>& a, const DualNumber<T2,D2>& b) \
     functorname##Type<DualNumber<T,D>,DualNumber<T2,D2> >::supertype \
     DS; \
   DS returnval = a; \
+  returnval.compute_derivatives() = a.compute_derivatives() && b.compute_derivatives(); \
   returnval opname##= b; \
   return returnval; \
 } \
@@ -241,6 +242,7 @@ operator opname (const T& a, const DualNumber<T2,D>& b) \
   typedef typename \
     functorname##Type<DualNumber<T2,D>,T,true>::supertype DS; \
   DS returnval = a; \
+  returnval.compute_derivatives() = b.compute_derivatives();    \
   returnval opname##= b; \
   return returnval; \
 } \
@@ -253,6 +255,7 @@ operator opname (const DualNumber<T,D>& a, const T2& b) \
   typedef typename \
     functorname##Type<DualNumber<T,D>,T2,false>::supertype DS; \
   DS returnval = a; \
+  returnval.compute_derivatives() = a.compute_derivatives();    \
   returnval opname##= b; \
   return returnval; \
 }
