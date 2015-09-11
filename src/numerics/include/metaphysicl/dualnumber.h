@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------------bl-
 //--------------------------------------------------------------------------
-// 
+//
 // MetaPhysicL - A metaprogramming library for physics calculations
 //
 // Copyright (C) 2013 The PECOS Development Team
@@ -32,10 +32,13 @@
 #include <ostream>
 #include <limits>
 
+#include "metaphysicl/metaphysicl_asserts.h"
 #include "metaphysicl/compare_types.h"
 #include "metaphysicl/dualderivatives.h"
 #include "metaphysicl/raw_type.h"
 #include "metaphysicl/testable.h"
+
+#include "Moose.h"
 
 namespace MetaPhysicL {
 
@@ -49,11 +52,19 @@ public:
 
   DualNumber();
 
+  ~DualNumber()
+  {
+    delete _deriv;
+  }
+
   template <typename T2>
   DualNumber(const T2& val);
 
   template <typename T2, typename D2>
   DualNumber(const T2& val, const D2& deriv);
+
+  template <typename T2, typename D2>
+  DualNumber(const T2& val, const D2 * deriv);
 
 #if __cplusplus >= 201103L
   // Move constructors are useful when all your data is on the heap
@@ -69,20 +80,42 @@ public:
   DualNumber& operator= (const DualNumber<T, D> & src) = default;
 #endif
 
-
   T& value() { return _val; }
 
   const T& value() const { return _val; }
 
-  D& derivatives() { return _deriv; }
+  D& derivatives()
+  {
+    if (!_deriv)
+      _deriv = new D;
 
-  const D& derivatives() const { return _deriv; }
+    return *_deriv;
+  }
+
+  const D& derivatives() const
+  {
+    metaphysicl_assert(_deriv);
+
+    return *_deriv;
+  }
 
   bool boolean_test() const { return _val; }
 
-  DualNumber<T,D> operator- () const { return DualNumber<T,D>(-_val, -_deriv); }
+  DualNumber<T,D> operator- () const
+  {
+    if (_deriv)
+      return DualNumber<T,D>(-_val, -(*_deriv));
+    else
+      return DualNumber<T,D>(-_val, NULL);
+  }
 
-  DualNumber<T,D> operator! () const { return DualNumber<T,D>(!_val, !_deriv); }
+  DualNumber<T,D> operator! () const
+  {
+    if (_deriv)
+      return DualNumber<T,D>(!_val, !_deriv);
+    else
+      return DualNumber<T,D>(!_val, NULL);
+  }
 
   template <typename T2, typename D2>
   DualNumber<T,D>& operator+= (const DualNumber<T2,D2>& a);
@@ -110,7 +143,7 @@ public:
 
 private:
   T _val;
-  D _deriv;
+  D * _deriv;
 };
 
 
@@ -177,14 +210,14 @@ struct DualNumberConstructor<DualNumber<T,D>, DD>
 template <typename T, typename D>
 inline
 DualNumber<T,D>::DualNumber() :
-  _val(), _deriv() {}
+  _val(), _deriv(NULL) {}
 
 template <typename T, typename D>
 template <typename T2>
 inline
 DualNumber<T,D>::DualNumber(const T2& val) :
   _val  (DualNumberConstructor<T,D>::value(val)),
-  _deriv(DualNumberConstructor<T,D>::deriv(val)) {}
+  _deriv(NULL) {}
 
 template <typename T, typename D>
 template <typename T2, typename D2>
@@ -192,7 +225,15 @@ inline
 DualNumber<T,D>::DualNumber(const T2& val,
                             const D2& deriv) :
   _val  (DualNumberConstructor<T,D>::value(val,deriv)),
-  _deriv(DualNumberConstructor<T,D>::deriv(val,deriv)) {}
+  _deriv(new typename DualNumberConstructor<T,D>::deriv(val,deriv)) {}
+
+template <typename T, typename D>
+template <typename T2, typename D2>
+inline
+DualNumber<T,D>::DualNumber(const T2& val,
+                            const D2 * deriv) :
+  _val  (DualNumberConstructor<T,D>::value(val,deriv)),
+  _deriv(deriv ? new typename DualNumberConstructor<T,D>::deriv(val,*deriv) : NULL) {}
 
 
 // FIXME: these operators currently do automatic type promotion when
@@ -304,17 +345,24 @@ operator opname (DualNumber<T,D>&& a, const T2& b) \
 #endif
 
 
-DualNumber_op(+, Plus, , this->derivatives() += in.derivatives())
+DualNumber_op(+, Plus, , if (in._deriv) { this->derivatives() += in.derivatives(); })
 
-DualNumber_op(-, Minus, , this->derivatives() -= in.derivatives())
+DualNumber_op(-, Minus, , if (in._deriv) { this->derivatives() -= in.derivatives(); })
 
-DualNumber_op(*, Multiplies, this->derivatives() *= in,
-  this->derivatives() *= in.value();
-  this->derivatives() += this->value() * in.derivatives();)
+DualNumber_op(*, Multiplies, if (this->_deriv)  this->derivatives() *= in,
+  if (in._deriv)
+  {
+    this->derivatives() *= in.value();
+    this->derivatives() += this->value() * in.derivatives();
+  }
+)
 
-DualNumber_op(/, Divides, this->derivatives() /= in,
-  this->derivatives() /= in.value();
-  this->derivatives() -= this->value()/(in.value()*in.value()) * in.derivatives();
+DualNumber_op(/, Divides, if (this->_deriv) this->derivatives() /= in,
+  if (in._deriv)
+  {
+    this->derivatives() /= in.value();
+    this->derivatives() -= this->value()/(in.value()*in.value()) * in.derivatives();
+  }
 )
 
 
@@ -361,7 +409,7 @@ DualNumber_compare(||)
 
 template <typename T, typename D>
 inline
-std::ostream&      
+std::ostream&
 operator<< (std::ostream& output, const DualNumber<T,D>& a)
 {
   return output << '(' << a.value() << ',' << a.derivatives() << ')';
@@ -713,7 +761,7 @@ funcname (const DualNumber<T,D>& a, const T2& b) \
   return std::funcname(a, newb); \
 }
 
-DualNumber_std_binary(pow, 
+DualNumber_std_binary(pow,
   funcval * (b.value() * a.derivatives() / a.value() + b.derivatives() * std::log(a.value())))
 DualNumber_std_binary(atan2,
   (b.value() * a.derivatives() - a.value() * b.derivatives()) /
@@ -725,7 +773,7 @@ DualNumber_std_binary(min,
 DualNumber_std_binary(fmod, a.derivatives())
 
 template <typename T, typename D>
-class numeric_limits<DualNumber<T, D> > : 
+class numeric_limits<DualNumber<T, D> > :
   public MetaPhysicL::raw_numeric_limits<DualNumber<T, D>, T> {};
 
 } // namespace std
