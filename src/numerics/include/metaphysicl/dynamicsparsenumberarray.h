@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------------bl-
 //--------------------------------------------------------------------------
-// 
+//
 // MetaPhysicL - A metaprogramming library for physics calculations
 //
 // Copyright (C) 2013 The PECOS Development Team
@@ -97,17 +97,20 @@ public:
   };
 
   std::size_t size() const
-    { metaphysicl_assert_equal_to(_data.size(), _indices.size());
-      return _data.size(); }
+    { if(!_data)
+        return 0;
+
+      metaphysicl_assert_equal_to(_data->size(), _indices->size());
+      return _data->size(); }
 
   void resize(std::size_t s)
-    { metaphysicl_assert_equal_to(_data.size(), _indices.size());
-      _data.resize(s);
-      _indices.resize(s); }
+    { metaphysicl_assert_equal_to(_data->size(), _indices->size());
+      _data->resize(s);
+      _indices->resize(s); }
 
-  DynamicSparseNumberArray() {}
+  DynamicSparseNumberArray() : _data(NULL), _indices(NULL) {}
 
-  DynamicSparseNumberArray(const T& val) {
+  DynamicSparseNumberArray(const T& val) : _data(NULL), _indices(NULL)  {
     // This makes no sense unless val is 0!
 #ifndef NDEBUG
     if (val)
@@ -116,7 +119,7 @@ public:
   }
 
   template <typename T2>
-  DynamicSparseNumberArray(const T2& val) {
+  DynamicSparseNumberArray(const T2& val) : _data(NULL), _indices(NULL)  {
     // This makes no sense unless val is 0!
 #ifndef NDEBUG
     if (val)
@@ -140,22 +143,22 @@ public:
 
   template <typename T2, typename I2>
   DynamicSparseNumberArray(DynamicSparseNumberArray<T2, I2> src)
-    { _data.resize(src._data.size());
-      _indices.resize(src._indices.size());
-      std::copy(src._data.begin(), src._data.end(), _data.begin());
-      std::copy(src._indices.begin(), src._indices.end(), _indices.begin()); }
+    { _data->resize(src._data->size());
+      _indices->resize(src._indices->size());
+      std::copy(src._data->begin(), src._data->end(), _data->begin());
+      std::copy(src._indices->begin(), src._indices->end(), _indices->begin()); }
 
   T* raw_data()
-    { return size()?&_data[0]:NULL; }
+    { return size()?&(*_data)[0]:NULL; }
 
   const T* raw_data() const
-    { return size()?&_data[0]:NULL; }
+    { return size()?&(*_data)[0]:NULL; }
 
   T& raw_at(unsigned int i)
-    { return _data[i]; }
+    { return (*_data)[i]; }
 
   const T& raw_at(unsigned int i) const
-    { return _data[i]; }
+    { return (*_data)[i]; }
 
   I& raw_index(unsigned int i)
     { return _indices[i]; }
@@ -166,63 +169,69 @@ public:
   // FIXME: these encapsulation violations are necessary for std::pow
   // until I can figure out the right friend declaration.
   const std::vector<T>& nude_data() const
-    { return _data; }
+    { return *_data; }
 
   std::vector<T>& nude_data()
-    { return _data; }
+    { return *_data; }
 
   const std::vector<I>& nude_indices() const
-    { return _indices; }
+    { return *_indices; }
 
   std::vector<I>& nude_indices()
-    { return _indices; }
+    { return *_indices; }
 
   std::size_t runtime_index_of(index_value_type i) const
     {
       typename std::vector<I>::const_iterator it =
-        std::lower_bound(_indices.begin(), _indices.end(), i);
-      metaphysicl_assert(it != _indices.end());
-      std::size_t offset = it - _indices.begin();
-      metaphysicl_assert_equal_to(_indices[offset], i);
+        std::lower_bound(_indices->begin(), _indices->end(), i);
+      metaphysicl_assert(it != _indices->end());
+      std::size_t offset = it - _indices->begin();
+      metaphysicl_assert_equal_to((*_indices)[offset], i);
       return offset;
     }
 
   T& operator[](index_value_type i)
-    { return _data[runtime_index_of(i)]; }
+    { return (*_data)[runtime_index_of(i)]; }
 
   const T& operator[](index_value_type i) const
-    { return _data[runtime_index_of(i)]; }
+    { return (*_data)[runtime_index_of(i)]; }
 
   template <unsigned int i>
   typename entry_type<i>::type& get() {
-    return _data[runtime_index_of(i)];
+    return (*_data)[runtime_index_of(i)];
   }
 
   template <unsigned int i>
   const typename entry_type<i>::type& get() const {
-    return _data[runtime_index_of(i)];
+    return (*_data)[runtime_index_of(i)];
   }
 
   value_type& insert(unsigned int i)
   {
+    if (!_data)
+    {
+      _data = new std::vector<T>;
+      _indices = new std::vector<I>;
+    }
+
     typename std::vector<I>::const_iterator upper_it =
-      std::lower_bound(_indices.begin(), _indices.end(), i);
-    std::size_t offset = upper_it - _indices.begin();
+      std::lower_bound(_indices->begin(), _indices->end(), i);
+    std::size_t offset = upper_it - _indices->begin();
 
     // If we don't have entry i, insert it.  Yes this is O(N).
-    if ((upper_it == _indices.end()) ||
+    if ((upper_it == _indices->end()) ||
         *upper_it != i)
       {
         std::size_t old_size = this->size();
         this->resize(old_size+1);
-        std::copy_backward(_indices.begin()+offset, _indices.begin()+old_size, _indices.end());
-        std::copy_backward(_data.begin()+offset, _data.begin()+old_size, _data.end());
-        _indices[offset] = i;
-        _data[offset] = 0;
+        std::copy_backward(_indices->begin()+offset, _indices->begin()+old_size, _indices->end());
+        std::copy_backward(_data->begin()+offset, _data->begin()+old_size, _data->end());
+        (*_indices)[offset] = i;
+        (*_data)[offset] = 0;
       }
 
     // We have entry i now; return it
-    return _data[offset];
+    return (*_data)[offset];
   }
 
   template <unsigned int i>
@@ -232,13 +241,13 @@ public:
 
   template <unsigned int i, typename T2>
   void set(const T2& val) {
-    _data[runtime_index_of(i)] = val;
+    (*_data)[runtime_index_of(i)] = val;
   }
 
   bool boolean_test() const {
     std::size_t index_size = size();
     for (unsigned int i=0; i != index_size; ++i)
-      if (_data[i])
+      if ((*_data)[i])
         return true;
     return false;
   }
@@ -247,7 +256,7 @@ public:
     std::size_t index_size = size();
     DynamicSparseNumberArray<T,I> returnval;
     returnval.resize(index_size);
-    for (unsigned int i=0; i != index_size; ++i) returnval.raw_at(i) = -_data[i];
+    for (unsigned int i=0; i != index_size; ++i) returnval.raw_at(i) = -(*_data)[i];
     return returnval;
   }
 
@@ -255,7 +264,7 @@ public:
   // increase it as needed to support e.g. operator+=
   template <typename I2>
   void sparsity_union (const std::vector<I2>& new_indices) {
-    typename std::vector<I>::iterator index_it = _indices.begin();
+    typename std::vector<I>::iterator index_it = _indices->begin();
     typename std::vector<I2>::const_iterator index2_it = new_indices.begin();
 
     typedef typename CompareTypes<I,I2>::supertype max_index_type;
@@ -264,18 +273,18 @@ public:
     I maxI = std::numeric_limits<I>::max();
 
     while (index2_it != new_indices.end()) {
-      I idx1 = (index_it == _indices.end()) ? maxI : *index_it;
+      I idx1 = (index_it == _indices->end()) ? maxI : *index_it;
       I2 idx2 = *index2_it;
 
       while (idx1 < idx2) {
         ++index_it;
-        idx1 = (index_it == _indices.end()) ? maxI : *index_it;
+        idx1 = (index_it == _indices->end()) ? maxI : *index_it;
       }
 
       while ((idx1 == idx2) &&
              (idx1 != maxI)) {
         ++index_it;
-        idx1 = (index_it == _indices.end()) ? maxI : *index_it;
+        idx1 = (index_it == _indices->end()) ? maxI : *index_it;
         ++index2_it;
         idx2 = (index2_it == new_indices.end()) ? maxI : *index2_it;
       }
@@ -297,22 +306,22 @@ public:
 
     this->resize(old_size + unseen_indices);
 
-    typename std::vector<T>::reverse_iterator md_it = _data.rbegin();
-    typename std::vector<I>::reverse_iterator mi_it = _indices.rbegin();
+    typename std::vector<T>::reverse_iterator md_it = _data->rbegin();
+    typename std::vector<I>::reverse_iterator mi_it = _indices->rbegin();
 
     typename std::vector<T>::const_reverse_iterator d_it =
-      _data.rbegin() + unseen_indices;
+      _data->rbegin() + unseen_indices;
     typename std::vector<I>::const_reverse_iterator i_it =
-      _indices.rbegin() + unseen_indices;
+      _indices->rbegin() + unseen_indices;
     typename std::vector<I2>::const_reverse_iterator i2_it = new_indices.rbegin();
 
     // Duplicate copies of rend() to work around
     // http://www.open-std.org/jtc1/sc22/wg21/docs/lwg-defects.html#179
-    typename std::vector<I>::reverse_iterator      mirend  = _indices.rend();
+    typename std::vector<I>::reverse_iterator      mirend  = _indices->rend();
     typename std::vector<I>::const_reverse_iterator  rend  = mirend;
     typename std::vector<I2>::const_reverse_iterator rend2 = new_indices.rend();
 #ifndef NDEBUG
-    typename std::vector<T>::reverse_iterator      mdrend = _data.rend();
+    typename std::vector<T>::reverse_iterator      mdrend = _data->rend();
     typename std::vector<T>::const_reverse_iterator drend = mdrend;
 #endif
 
@@ -350,34 +359,34 @@ public:
     typedef typename CompareTypes<I,I2>::supertype max_index_type;
 
 #ifndef NDEBUG
-    typename std::vector<I>::iterator index_it = _indices.begin();
-    typename std::vector<I2>::const_iterator index2_it = new_indices.begin();
+    typename std::vector<I>::iterator index_it = _indices->begin();
+    typename std::vector<I2>::const_iterator index2_it = new_indices->begin();
 
     max_index_type shared_indices = 0;
 
     I maxI = std::numeric_limits<I>::max();
 
-    while (index2_it != new_indices.end()) {
-      I idx1 = (index_it == _indices.end()) ? maxI : *index_it;
+    while (index2_it != new_indices->end()) {
+      I idx1 = (index_it == _indices->end()) ? maxI : *index_it;
       I2 idx2 = *index2_it;
 
       while (idx1 < idx2) {
         ++index_it;
-        idx1 = (index_it == _indices.end()) ? maxI : *index_it;
+        idx1 = (index_it == _indices->end()) ? maxI : *index_it;
       }
 
       while ((idx1 == idx2) &&
              (idx1 != maxI)) {
         ++index_it;
-        idx1 = (index_it == _indices.end()) ? maxI : *index_it;
+        idx1 = (index_it == _indices->end()) ? maxI : *index_it;
         ++index2_it;
-        idx2 = (index2_it == new_indices.end()) ? maxI : *index2_it;
+        idx2 = (index2_it == new_indices->end()) ? maxI : *index2_it;
         ++shared_indices;
       }
 
       while (idx2 < idx1) {
         ++index2_it;
-        if (index2_it == new_indices.end())
+        if (index2_it == new_indices->end())
           break;
         idx2 = *index2_it;
       }
@@ -388,46 +397,46 @@ public:
     // corresponding data) that should be there downward into place.
 
     // Merged values:
-    typename std::vector<T>::iterator md_it = _data.begin();
-    typename std::vector<I>::iterator mi_it = _indices.begin();
+    typename std::vector<T>::iterator md_it = _data->begin();
+    typename std::vector<I>::iterator mi_it = _indices->begin();
 
     // Our old values:
-    typename std::vector<T>::const_iterator d_it = _data.begin();
-    typename std::vector<I>::const_iterator i_it = _indices.begin();
+    typename std::vector<T>::const_iterator d_it = _data->begin();
+    typename std::vector<I>::const_iterator i_it = _indices->begin();
 
     // Values to merge with:
-    typename std::vector<I2>::const_iterator i2_it = new_indices.begin();
+    typename std::vector<I2>::const_iterator i2_it = new_indices->begin();
 
-    for (; i_it != _indices.end() && i2_it != new_indices.end();
+    for (; i_it != _indices->end() && i2_it != new_indices->end();
          ++md_it, ++mi_it, ++d_it, ++i_it, ++i2_it) {
       while (*i2_it < *i_it) {
         ++i2_it;
-        if (i2_it == new_indices.end())
+        if (i2_it == new_indices->end())
           break;
       }
-      if (i2_it == new_indices.end())
+      if (i2_it == new_indices->end())
         break;
       while (*i2_it > *i_it) {
           ++i_it;
-        if (i_it == _indices.end())
+        if (i_it == _indices->end())
           break;
       }
-      if (i_it == _indices.end())
+      if (i_it == _indices->end())
         break;
 
       *md_it = *d_it;
       *mi_it = *i_it;
     }
 
-    metaphysicl_assert_equal_to(md_it - _data.begin(),
+    metaphysicl_assert_equal_to(md_it - _data->begin(),
                                 shared_indices);
-    metaphysicl_assert_equal_to(mi_it - _indices.begin(),
+    metaphysicl_assert_equal_to(mi_it - _indices->begin(),
                                 shared_indices);
 
-    const std::size_t n_indices = md_it - _data.begin();
+    const std::size_t n_indices = md_it - _data->begin();
 
-    _indices.resize(n_indices);
-    _data.resize(n_indices);
+    _indices->resize(n_indices);
+    _data->resize(n_indices);
   }
 
 
@@ -438,11 +447,14 @@ public:
   template <typename T2, typename I2>
   DynamicSparseNumberArray<T,I>&
     operator+= (const DynamicSparseNumberArray<T2,I2>& a) {
+    if(!_data || !a._data)
+      return *this;
+
     // Resize if necessary
     this->sparsity_union(a.nude_indices());
 
-    typename std::vector<T>::iterator data_it  = _data.begin();
-    typename std::vector<I>::iterator index_it = _indices.begin();
+    typename std::vector<T>::iterator data_it  = _data->begin();
+    typename std::vector<I>::iterator index_it = _indices->begin();
     typename std::vector<T2>::const_iterator data2_it  =
       a.nude_data().begin();
     typename std::vector<I2>::const_iterator index2_it =
@@ -455,7 +467,7 @@ public:
         while (idx1 < idx2) {
           ++index_it;
           ++data_it;
-          metaphysicl_assert(index_it != _indices.end());
+          metaphysicl_assert(index_it != _indices->end());
           idx1 = *index_it;
         }
         metaphysicl_assert_equal_to(idx1, idx2);
@@ -473,8 +485,8 @@ public:
     // Resize if necessary
     this->sparsity_union(a.nude_indices());
 
-    typename std::vector<T>::iterator data_it  = _data.begin();
-    typename std::vector<I>::iterator index_it = _indices.begin();
+    typename std::vector<T>::iterator data_it  = _data->begin();
+    typename std::vector<I>::iterator index_it = _indices->begin();
     typename std::vector<T2>::const_iterator data2_it  =
       a.nude_data().begin();
     typename std::vector<I2>::const_iterator index2_it =
@@ -487,7 +499,7 @@ public:
         while (idx1 < idx2) {
           ++index_it;
           ++data_it;
-          metaphysicl_assert(index_it != _indices.end());
+          metaphysicl_assert(index_it != _indices->end());
           idx1 = *index_it;
         }
         metaphysicl_assert_equal_to(idx1, idx2);
@@ -505,8 +517,8 @@ public:
     // Resize if possible
     this->sparsity_intersection(a.nude_indices());
 
-    typename std::vector<T>::iterator data_it  = _data.begin();
-    typename std::vector<I>::iterator index_it = _indices.begin();
+    typename std::vector<T>::iterator data_it  = _data->begin();
+    typename std::vector<I>::iterator index_it = _indices->begin();
     typename std::vector<T2>::const_iterator data2_it  =
       a.nude_data().begin();
     typename std::vector<I2>::const_iterator index2_it =
@@ -519,7 +531,7 @@ public:
         while (idx1 < idx2) {
           ++index_it;
           ++data_it;
-          metaphysicl_assert(index_it != _indices.end());
+          metaphysicl_assert(index_it != _indices->end());
           idx1 = *index_it;
         }
 
@@ -534,8 +546,8 @@ public:
   template <typename T2, typename I2>
   DynamicSparseNumberArray<T,I>&
     operator/= (const DynamicSparseNumberArray<T2,I2>& a) {
-    typename std::vector<T>::iterator data_it  = _data.begin();
-    typename std::vector<I>::iterator index_it = _indices.begin();
+    typename std::vector<T>::iterator data_it  = _data->begin();
+    typename std::vector<I>::iterator index_it = _indices->begin();
     typename std::vector<T2>::const_iterator data2_it  =
       a.nude_data().begin();
     typename std::vector<I2>::const_iterator index2_it =
@@ -548,7 +560,7 @@ public:
         while (idx1 < idx2) {
           ++index_it;
           ++data_it;
-          metaphysicl_assert(index_it != _indices.end());
+          metaphysicl_assert(index_it != _indices->end());
           idx1 = *index_it;
         }
 
@@ -564,7 +576,7 @@ public:
   DynamicSparseNumberArray<T,I>& operator*= (const T2& a) {
     std::size_t index_size = size();
     for (unsigned int i=0; i != index_size; ++i)
-      _data[i] *= a;
+      (*_data)[i] *= a;
     return *this;
   }
 
@@ -572,7 +584,7 @@ public:
   DynamicSparseNumberArray<T,I>& operator/= (const T2& a) {
     std::size_t index_size = size();
     for (unsigned int i=0; i != index_size; ++i)
-      _data[i] /= a;
+      (*_data)[i] /= a;
     return *this;
   }
 
@@ -611,8 +623,8 @@ public:
 
 private:
 
-  std::vector<T> _data;
-  std::vector<I> _indices;
+  std::vector<T> * _data;
+  std::vector<I> * _indices;
 };
 
 
@@ -1067,14 +1079,14 @@ funcname (const DynamicSparseNumberArray<T, I>& a, \
   typedef typename CompareTypes<I,I2>::supertype IS; \
   DynamicSparseNumberArray<TS, IS> returnval; \
  \
-  std::size_t index_size = a.nude_indices.size(); \
+  std::size_t index_size = a.nude_indices->size(); \
   returnval.nude_indices = a.nude_indices; \
   returnval.nude_data.resize(index_size); \
   returnval.sparsity_union(b.nude_indices); \
  \
-  typename std::vector<I>::const_iterator  index_a_it = a.nude_indices.begin(); \
-  typename std::vector<I2>::const_iterator index_b_it = b.nude_indices.begin(); \
-  typename std::vector<IS>::iterator     index_out_it = returnval.nude_indices.begin(); \
+  typename std::vector<I>::const_iterator  index_a_it = a.nude_indices->begin(); \
+  typename std::vector<I2>::const_iterator index_b_it = b.nude_indices->begin(); \
+  typename std::vector<IS>::iterator     index_out_it = returnval.nude_indices->begin(); \
  \
   typename std::vector<T>::const_iterator  data_a_it = a.nude_data.begin(); \
   typename std::vector<T2>::const_iterator data_b_it = b.nude_data.begin(); \
@@ -1082,12 +1094,12 @@ funcname (const DynamicSparseNumberArray<T, I>& a, \
  \
   IS  maxIS  = std::numeric_limits<IS>::max(); \
  \
-  for (; index_out_it != returnval.nude_indices.end(); ++index_out_it, ++data_out_it) { \
-    const IS index_a = (index_a_it == a.nude_indices.end()) ? maxIS : *index_a_it; \
-    const IS index_b = (index_b_it == b.nude_indices.end()) ? maxIS : *index_b_it; \
+  for (; index_out_it != returnval.nude_indices->end(); ++index_out_it, ++data_out_it) { \
+    const IS index_a = (index_a_it == a.nude_indices->end()) ? maxIS : *index_a_it; \
+    const IS index_b = (index_b_it == b.nude_indices->end()) ? maxIS : *index_b_it; \
     const IS index_out = *index_out_it; \
-    const TS data_a  = (index_a_it == a.nude_indices.end()) ? 0: *data_a_it; \
-    const TS data_b  = (index_b_it == b.nude_indices.end()) ? 0: *data_b_it; \
+    const TS data_a  = (index_a_it == a.nude_indices->end()) ? 0: *data_a_it; \
+    const TS data_b  = (index_b_it == b.nude_indices->end()) ? 0: *data_b_it; \
     TS &   data_out  = *data_out_it; \
  \
     if (index_a == index_out) { \
